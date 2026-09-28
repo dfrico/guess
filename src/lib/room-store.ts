@@ -1,4 +1,5 @@
 import { createRoom } from './game'
+import { roomsSwept } from './metrics'
 import type { Room } from './types'
 
 export interface RoomStore {
@@ -6,8 +7,9 @@ export interface RoomStore {
   create(code: string, password: string): Promise<Room>
   save(room: Room): Promise<void>
   delete(code: string): Promise<void>
-  sweep(maxIdleMs: number): Promise<void>
+  sweep(maxIdleMs: number): Promise<number>
   count(): Promise<number>
+  countSync(): { rooms: number; players: number; playing: number }
 }
 
 export class InMemoryRoomStore implements RoomStore {
@@ -31,15 +33,30 @@ export class InMemoryRoomStore implements RoomStore {
     this.rooms.delete(code)
   }
 
-  async sweep(maxIdleMs: number): Promise<void> {
+  async sweep(maxIdleMs: number): Promise<number> {
     const cutoff = Date.now() - maxIdleMs
+    let removed = 0
     for (const [code, room] of this.rooms) {
-      if (room.lastActivityAt < cutoff) this.rooms.delete(code)
+      if (room.lastActivityAt < cutoff) {
+        this.rooms.delete(code)
+        removed++
+      }
     }
+    return removed
   }
 
   async count(): Promise<number> {
     return this.rooms.size
+  }
+
+  countSync(): { rooms: number; players: number; playing: number } {
+    let players = 0
+    let playing = 0
+    for (const room of this.rooms.values()) {
+      players += room.players.size
+      if (room.phase === 'playing') playing++
+    }
+    return { rooms: this.rooms.size, players, playing }
   }
 }
 
@@ -59,7 +76,9 @@ const IDLE_TTL_MS = 6 * 60 * 60 * 1000
 
 export function startSweeper(store: RoomStore): NodeJS.Timeout {
   const timer = setInterval(() => {
-    void store.sweep(IDLE_TTL_MS)
+    void store.sweep(IDLE_TTL_MS).then((removed) => {
+      if (removed > 0) roomsSwept.increment({}, removed)
+    })
   }, SWEEP_EVERY_MS)
   timer.unref()
   return timer

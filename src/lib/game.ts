@@ -81,6 +81,10 @@ export function endGame(room: Room): void {
   room.lastActivityAt = Date.now()
 }
 
+export function isGameOver(room: Room): boolean {
+  return room.phase === 'finished'
+}
+
 export function getTurnId(room: Room): string | null {
   if (room.phase !== 'playing') return null
   const id = room.order[room.turnIndex]

@@ -17,13 +17,14 @@ npm install
 npm run dev
 ```
 
-The server prints two URLs on startup:
+The server prints three URLs on startup:
 
 ```
   guess is running
 
     local   http://localhost:3000
     network http://192.168.1.43:3000   <- share this one
+    metrics http://127.0.0.1:9464/metrics  (loopback only)
 ```
 
 **Share the network URL.** This is an in-person game played on phones, so the server binds to
@@ -34,12 +35,19 @@ join. If you need to override it, set `HOST` and `PORT`.
 HOST=0.0.0.0 PORT=8080 npm run dev
 ```
 
+**Opening the dev server from another device.** Next.js treats the LAN address as a foreign
+origin in development and will refuse to serve its HMR socket, which leaves you with
+server-rendered HTML that does not respond to clicks. `next.config.ts` passes
+`allowedDevOrigins` from `src/lib/network.ts`, which reads your live network interfaces at
+startup, so the LAN IP is picked up automatically even when it changes between wifi networks.
+Keep that list intact if you touch the dev config.
+
 | Script              | What it does                                             |
 | ------------------- | -------------------------------------------------------- |
 | `npm run dev`       | Dev server with hot reload via `tsx watch`                |
 | `npm run build`     | Production Next.js build                                  |
 | `npm start`         | Production server (`NODE_ENV=production tsx server.ts`)   |
-| `npm test`          | 71 end-to-end socket checks — **needs a server running**   |
+| `npm test`          | 77 end-to-end socket checks — **needs a server running**   |
 | `npm run typecheck` | `tsc --noEmit`                                            |
 | `npm run lint`      | ESLint (Next core-web-vitals + TypeScript)                |
 
@@ -182,13 +190,14 @@ This is a plain array cursor rather than a linked queue so it survives players l
 
 ### Storage seam
 
-`RoomStore` (`src/lib/room-store.ts`) is a five-method interface: `get`, `create`, `save`,
-`delete`, `sweep`. The game logic only ever talks to this interface, so moving to Postgres
-means writing a second implementation and nothing else. The in-memory version is held on a
-`Symbol.for()` global so Next's dev-mode module reloading doesn't duplicate it.
+`RoomStore` (`src/lib/room-store.ts`) is a small interface: `get`, `create`, `save`, `delete`,
+`sweep`, `count`, `countSync`. The game logic only ever talks to this interface, so moving to
+Postgres means writing a second implementation and nothing else. The in-memory version is held
+on a `Symbol.for()` global so Next's dev-mode module reloading doesn't duplicate it.
 
 A sweeper drops rooms idle for 6 hours. `sweep` is already part of the interface so a
-database-backed version can clean up without touching callers.
+database-backed version can clean up without touching callers. It returns how many rooms it
+removed, which feeds `guess_rooms_swept_total`.
 
 ### Client state
 
@@ -205,6 +214,44 @@ render pure and avoiding a hydration mismatch.
 localStorage holds two keys: a `guess.profile` (name and avatar, so you don't retype it)
 and a per-room `guess.session.<code>` holding the player id. The player id doubles as the
 resume capability token, which is why `room:resume` can skip the password check.
+
+### Metrics
+
+`GET http://127.0.0.1:9464/metrics` serves Prometheus text format. It's a second HTTP server
+bound to loopback, so it is never reachable from the LAN or the public internet even though
+the game itself is. Override with `METRICS_PORT`.
+
+| Metric | Type | Labels | Notes |
+| ------ | ---- | ------ | ----- |
+| `guess_rooms_active` | gauge | | rooms in memory right now |
+| `guess_players_connected` | gauge | | open sockets, from `io.engine.clientsCount` |
+| `guess_players_in_rooms` | gauge | | players across live rooms, connected or not |
+| `guess_rooms_created_total` | counter | | |
+| `guess_rooms_ended_total` | counter | `reason` | `played_to_end` or `host_ended` |
+| `guess_rooms_swept_total` | counter | | rooms dropped by the idle sweeper |
+| `guess_reconnects_total` | counter | `result` | `resumed` or `expired` |
+| `guess_socket_events_total` | counter | `event`, `result` | `result` is `ok`, `rejected`, or `error` |
+| `guess_socket_errors_total` | counter | `event` | handlers that threw |
+| `guess_game_duration_seconds` | histogram | | first guess to game over |
+
+Counting happens in one place. Every handler is registered through `onAck`
+(`src/server/socket.ts`), which wraps the ack callback, so `ok` versus `rejected` is recorded
+uniformly whether the handler returns early or falls through. A handler that throws is counted
+once in `guess_socket_events_total{result="error"}`, once in `guess_socket_errors_total`, and
+still acks the client — which is what turns a silent dead button into a visible counter.
+
+`guess_game_duration_seconds` is the one worth actually reading. It measures from a room's
+first guess to it finishing, which tells you how long a real game takes and therefore whether
+the 6-hour idle TTL is sensible.
+
+Two constraints. Label values are only ever `event`, `result`, or `reason` — never a room
+code or player id, which would blow up cardinality. And because state is in-process, all of
+this is single-instance and resets on deploy; these numbers stop being meaningful the moment
+you run more than one replica, which is the same Redis requirement as scaling the game itself.
+
+The counters have no dependencies. `src/lib/metrics.ts` is a few dozen lines of
+`Counter`/`Gauge`/`Histogram` and serialises to the text format directly, so `curl` works
+today and adding Prometheus later needs no code change.
 
 ### Event reference
 
@@ -232,9 +279,9 @@ socket.io does not strip `undefined` arguments, so a handler declaring a lone op
 ## Testing
 
 `npm test` runs `scripts/smoke.ts`, which drives a real server with four socket.io clients
-and asserts 71 conditions. It covers room lifecycle, all the validation rejections,
+and asserts 77 conditions. It covers room lifecycle, all the validation rejections,
 number secrecy across every emitted frame, turn order, wrong and correct guesses, restart,
-reconnect, and departure.
+reconnect, departure, and the ack-signature behaviour described above.
 
 It needs a server running — start one with `npm run dev`, or `npm run build && npm start`.
 

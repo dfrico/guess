@@ -3,11 +3,20 @@ import {
   addPlayer,
   advanceTurn,
   endGame,
+  isGameOver,
   removePlayer,
   startGame,
   submitGuess,
   toRoomView,
 } from '@/lib/game'
+import {
+  gameDuration,
+  reconnects,
+  roomsCreated,
+  roomsEnded,
+  socketErrors,
+  socketEvents,
+} from '@/lib/metrics'
 import { normalizeRoomName } from '@/lib/room-name'
 import { getRoomStore } from '@/lib/room-store'
 import type { CreateRoomPayload, JoinRoomPayload, Room } from '@/lib/types'
@@ -35,11 +44,41 @@ function onAck<P = Record<string, unknown>>(
   event: string,
   handler: AckHandler<P>,
 ): void {
-  socket.on(event, (payload: P, ack: unknown) => {
-    void handler(payload, safeAck(ack)).catch((error: unknown) => {
+  socket.on(event, (payload: P, rawAck: unknown) => {
+    const reply = safeAck(rawAck)
+    let settled = false
+
+    // Wrapping the ack means every handler is counted the same way, whether it
+    // returns early or falls through to the end.
+    const ack: Ack = (result) => {
+      if (settled) return
+      settled = true
+      socketEvents.increment({ event, result: result.ok ? 'ok' : 'rejected' })
+      reply(result)
+    }
+
+    void handler(payload, ack).catch((error: unknown) => {
+      socketErrors.increment({ event })
       console.error(`[socket] ${event} failed:`, error)
+      ack({ ok: false, error: 'Something went wrong handling that.' })
     })
   })
+}
+
+const firstGuessAt = new WeakMap<Room, number>()
+const countedAsEnded = new WeakSet<Room>()
+
+function markFirstGuess(room: Room): void {
+  if (room.phase !== 'playing' || firstGuessAt.has(room)) return
+  firstGuessAt.set(room, Date.now())
+}
+
+function trackGameEnd(room: Room, reason: 'played_to_end' | 'host_ended'): void {
+  if (!isGameOver(room) || countedAsEnded.has(room)) return
+  countedAsEnded.add(room)
+  roomsEnded.increment({ reason })
+  const started = firstGuessAt.get(room)
+  if (started !== undefined) gameDuration.observe((Date.now() - started) / 1000)
 }
 
 function sendState(io: Server, room: Room, playerId: string): void {
@@ -101,7 +140,9 @@ export function registerSocketHandlers(io: Server): void {
 
     onAck<CreateRoomPayload>(socket, 'room:create', async (payload, ack) => {
       const code = normalizeRoomName(payload?.roomName ?? '')
-      if (code.length < 2) return ack({ ok: false, error: 'Room name needs at least 2 characters.' })
+      if (code.length < 2) {
+        return ack({ ok: false, error: 'Room name needs at least 2 characters.' })
+      }
       if (!payload?.password?.trim()) return ack({ ok: false, error: 'Set a room password.' })
 
       if ((await store.get(code))?.players.size) {
@@ -112,6 +153,7 @@ export function registerSocketHandlers(io: Server): void {
       const room = await store.create(code, payload.password.trim())
       const result = addPlayer(room, { name: payload.name, avatar: payload.avatar })
       if (!result.ok) return ack({ ok: false, error: result.error })
+      roomsCreated.increment()
 
       result.player.socketId = socket.id
       socket.data.roomCode = code
@@ -144,7 +186,11 @@ export function registerSocketHandlers(io: Server): void {
     onAck<{ code: string; playerId: string }>(socket, 'room:resume', async (payload, ack) => {
       const room = await store.get(normalizeRoomName(payload?.code ?? ''))
       const player = room?.players.get(payload?.playerId ?? '')
-      if (!room || !player) return ack({ ok: false, error: 'Session expired. Join the room again.' })
+      if (!room || !player) {
+        reconnects.increment({ result: 'expired' })
+        return ack({ ok: false, error: 'Session expired. Join the room again.' })
+      }
+      reconnects.increment({ result: 'resumed' })
 
       player.connected = true
       player.socketId = socket.id
@@ -179,6 +225,9 @@ export function registerSocketHandlers(io: Server): void {
       const outcome = submitGuess(ctx.room, ctx.playerId, raw)
       if (!outcome.ok) return ack({ ok: false, error: outcome.error })
 
+      markFirstGuess(ctx.room)
+      trackGameEnd(ctx.room, 'played_to_end')
+
       await store.save(ctx.room)
       broadcast(io, ctx.room)
       ack(outcome)
@@ -204,6 +253,7 @@ export function registerSocketHandlers(io: Server): void {
       if (ctx.room.hostId !== ctx.playerId) return ack({ ok: false, error: 'Only the host can do that.' })
 
       endGame(ctx.room)
+      trackGameEnd(ctx.room, 'host_ended')
       await store.save(ctx.room)
       broadcast(io, ctx.room)
       ack({ ok: true })
