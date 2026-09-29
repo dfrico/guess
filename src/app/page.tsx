@@ -41,7 +41,7 @@ export default function JoinPage() {
     const cleanName = displayName.trim()
     try {
       const code = normalizeRoomName(roomName)
-      const result = await emitWithAck<{ code: string; playerId: string }>(
+      const result = await emitWithAck<{ code: string; token: string }>(
         mode === 'create' ? 'room:create' : 'room:join',
         { roomName: code, password, name: cleanName, avatar: displayAvatar },
       )
@@ -50,7 +50,7 @@ export default function JoinPage() {
         return
       }
       saveProfile({ name: cleanName, avatar: displayAvatar })
-      saveSession({ roomCode: result.code, playerId: result.playerId })
+      saveSession({ roomCode: result.code, token: result.token })
       router.push(`/room/${result.code}`)
     } catch {
       setError('Could not reach the server. Is it still running?')

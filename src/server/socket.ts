@@ -3,6 +3,7 @@ import {
   addPlayer,
   advanceTurn,
   endGame,
+  findPlayerByToken,
   isGameOver,
   removePlayer,
   startGame,
@@ -112,7 +113,9 @@ export function registerSocketHandlers(io: Server): void {
       removePlayer(room, playerId)
     } else {
       const player = room.players.get(playerId)
-      if (!player) return
+      // A late disconnect from a socket the player has already replaced (a
+      // network switch, a second tab) must not knock the live one offline.
+      if (!player || player.socketId !== socket.id) return
       player.connected = false
       player.socketId = null
       room.lastActivityAt = Date.now()
@@ -124,6 +127,12 @@ export function registerSocketHandlers(io: Server): void {
     }
     await store.save(room)
     broadcast(io, room)
+  }
+
+  // A socket belongs to one room at a time. Without this, switching rooms
+  // leaves it subscribed to the old room's broadcasts.
+  const detach = async (socket: GameSocket) => {
+    if (socket.data.roomCode) await leave(socket, false)
   }
 
   const current = async (socket: GameSocket) => {
@@ -155,13 +164,14 @@ export function registerSocketHandlers(io: Server): void {
       if (!result.ok) return ack({ ok: false, error: result.error })
       roomsCreated.increment()
 
+      await detach(socket)
       result.player.socketId = socket.id
       socket.data.roomCode = code
       socket.data.playerId = result.player.id
       await socket.join(`room:${code}`)
 
       sendState(io, room, result.player.id)
-      ack({ ok: true, code, playerId: result.player.id })
+      ack({ ok: true, code, playerId: result.player.id, token: result.player.token })
     })
 
     onAck<JoinRoomPayload>(socket, 'room:join', async (payload, ack) => {
@@ -173,6 +183,7 @@ export function registerSocketHandlers(io: Server): void {
       const result = addPlayer(room, { name: payload.name, avatar: payload.avatar })
       if (!result.ok) return ack({ ok: false, error: result.error })
 
+      await detach(socket)
       result.player.socketId = socket.id
       socket.data.roomCode = code
       socket.data.playerId = result.player.id
@@ -180,18 +191,19 @@ export function registerSocketHandlers(io: Server): void {
       await store.save(room)
 
       broadcast(io, room)
-      ack({ ok: true, code, playerId: result.player.id })
+      ack({ ok: true, code, playerId: result.player.id, token: result.player.token })
     })
 
-    onAck<{ code: string; playerId: string }>(socket, 'room:resume', async (payload, ack) => {
+    onAck<{ code: string; token: string }>(socket, 'room:resume', async (payload, ack) => {
       const room = await store.get(normalizeRoomName(payload?.code ?? ''))
-      const player = room?.players.get(payload?.playerId ?? '')
+      const player = room ? findPlayerByToken(room, payload?.token) : null
       if (!room || !player) {
         reconnects.increment({ result: 'expired' })
         return ack({ ok: false, error: 'Session expired. Join the room again.' })
       }
       reconnects.increment({ result: 'resumed' })
 
+      if (socket.data.roomCode !== room.code || socket.data.playerId !== player.id) await detach(socket)
       player.connected = true
       player.socketId = socket.id
       player.lastSeenAt = Date.now()

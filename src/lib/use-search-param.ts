@@ -3,17 +3,13 @@
 import { useCallback, useSyncExternalStore } from 'react'
 import { AVATARS } from './types'
 
-const searchCache = { key: null as string | null, value: '' }
 const subscribeNothing = () => () => {}
 
 export function useSearchParam(key: string): string {
+  // Strings compare by value, so the snapshot is stable without a cache.
   const getSnapshot = useCallback(() => {
     const search = typeof window === 'undefined' ? '' : window.location.search
-    if (search !== searchCache.key) {
-      searchCache.key = search
-      searchCache.value = new URLSearchParams(search).get(key) ?? ''
-    }
-    return searchCache.value
+    return new URLSearchParams(search).get(key) ?? ''
   }, [key])
 
   return useSyncExternalStore(subscribeNothing, getSnapshot, () => '')

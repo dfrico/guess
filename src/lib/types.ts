@@ -2,6 +2,8 @@ export type Phase = 'lobby' | 'playing' | 'finished'
 
 export interface Player {
   id: string
+  // Secret used by room:resume. Unlike id it is never sent to other players.
+  token: string
   name: string
   avatar: string
   number: number | null
@@ -56,7 +58,7 @@ export interface RoomView {
 
 export interface Session {
   roomCode: string
-  playerId: string
+  token: string
 }
 
 export type Ack<T> = (result: { ok: true } & T) => void

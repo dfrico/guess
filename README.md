@@ -47,7 +47,7 @@ Keep that list intact if you touch the dev config.
 | `npm run dev`       | Dev server with hot reload via `tsx watch`                |
 | `npm run build`     | Production Next.js build                                  |
 | `npm start`         | Production server (`NODE_ENV=production tsx server.ts`)   |
-| `npm test`          | 77 end-to-end socket checks — **needs a server running**   |
+| `npm test`          | 83 end-to-end socket checks — **needs a server running**   |
 | `npm run typecheck` | `tsc --noEmit`                                            |
 | `npm run lint`      | ESLint (Next core-web-vitals + TypeScript)                |
 
@@ -60,8 +60,8 @@ Keep that list intact if you touch the dev config.
    "would I be okay with that many dollars?" Everyone else can see your cell and answers.
 5. When you're confident, hit **I think I know it** and type the number. The server is the
    referee: it checks your answer against the real one and confirms or rejects it.
-6. A correct guess advances the turn to the next unsolved player. When everyone's solved,
-   every number is revealed.
+6. Any guess ends your turn. Right or wrong, play moves on to the next unsolved player,
+   so you get one guess per turn. When everyone's solved, every number is revealed.
 
 Voice and chat are deliberately out of scope.
 
@@ -73,6 +73,7 @@ Voice and chat are deliberately out of scope.
 - Server-refereed guesses — you cannot fake a solve to skip your turn
 - 1–100 range, shown to everyone so the asker knows the search space
 - Duplicate numbers are allowed, matching the physical game
+- Players who join mid-game are dealt a number and go to the end of the turn order
 
 **Solved state**
 - The solver's number is revealed to everyone, including themselves
@@ -181,7 +182,8 @@ solved, and the value must be a whole number in range.
 ### Turn order
 
 `room.order` is an array of player ids in join order; `turnIndex` is a cursor into it.
-`advanceTurn` scans forward from the current position and wraps, skipping solved players.
+`advanceTurn` runs after every guess, right or wrong, and after a pass. It scans forward
+from the current position and wraps, skipping solved players.
 It scans exactly `size` steps, so a lone remaining player finds themselves and keeps the
 turn. If nobody is unsolved, the phase flips to `finished`.
 
@@ -212,8 +214,17 @@ random confetti geometry is generated at module scope and picked from by `useMem
 render pure and avoiding a hydration mismatch.
 
 localStorage holds two keys: a `guess.profile` (name and avatar, so you don't retype it)
-and a per-room `guess.session.<code>` holding the player id. The player id doubles as the
-resume capability token, which is why `room:resume` can skip the password check.
+and a per-room `guess.session.<code>` holding the player's resume token. The token is a
+separate secret from the player id: ids appear in every `room:state` frame, so if an id could
+resume a session, any player could take over another player's seat and read their own number
+from that player's view. Tokens are never broadcast, which is why `room:resume` can skip the
+password check.
+
+A socket belongs to one player in one room at a time. Creating, joining or resuming detaches
+it from whatever it was attached to before, so switching rooms can't leave it receiving the
+old room's state. A disconnect only marks a player offline if it comes from the socket they
+are currently using. A late disconnect from a socket they've already replaced (a phone
+switching networks, a second tab) is ignored.
 
 ### Metrics
 
@@ -260,9 +271,9 @@ client surfaces `error` verbatim.
 
 | Event          | Direction       | Purpose                                        |
 | -------------- | --------------- | ---------------------------------------------- |
-| `room:create`  | client → server | Create a room, returns `code` and `playerId`   |
+| `room:create`  | client → server | Create a room, returns `code`, `playerId`, `token` |
 | `room:join`    | client → server | Join by code and password                      |
-| `room:resume`  | client → server | Re-attach a known `playerId` after a refresh   |
+| `room:resume`  | client → server | Re-attach by `token` after a refresh           |
 | `room:start`   | client → server | Host deals numbers, or redeals a rematch       |
 | `room:guess`   | client → server | Submit a number; server returns correct/incorrect |
 | `room:pass`    | client → server | Skip to the next player                        |
@@ -279,9 +290,10 @@ socket.io does not strip `undefined` arguments, so a handler declaring a lone op
 ## Testing
 
 `npm test` runs `scripts/smoke.ts`, which drives a real server with four socket.io clients
-and asserts 77 conditions. It covers room lifecycle, all the validation rejections,
-number secrecy across every emitted frame, turn order, wrong and correct guesses, restart,
-reconnect, departure, and the ack-signature behaviour described above.
+and asserts 83 conditions. It covers room lifecycle, all the validation rejections,
+number and token secrecy across every emitted frame, turn order, wrong guesses passing the
+turn, correct guesses, restart, joining mid-game, token-based reconnect, stale disconnects,
+switching rooms, departure, and the ack-signature behaviour described above.
 
 It needs a server running — start one with `npm run dev`, or `npm run build && npm start`.
 
@@ -300,13 +312,13 @@ could not: `room:create` not returning `code`/`playerId` (the app redirected to
 - **State is in memory.** A server restart drops all rooms. Fine for a party; not fine if
   you want a room to survive deploys. `RoomStore` is the seam for fixing this.
 - **No authentication.** A room password is a shared string compared server-side, and the
-  player id is a bearer token. Appropriate for a game among people in the same room, not a
+  resume token is a bearer token. Appropriate for a game among people in the same room, not a
   security boundary.
 - **Socket handler exceptions are not logged.** `server.ts` only reports startup failures.
   An exception inside a handler is swallowed by socket.io and the client just times out. If
   you see a silent failure, add a `try/catch` with logging in `src/server/socket.ts`.
-- **No rate limiting on guesses.** Restricting guesses to your own turn is the only brake, so
-  a determined player can still brute-force their number. This was a deliberate choice —
-  wrong guesses are meant to be free.
+- **No rate limiting on guesses.** Each guess ends your turn, so you get one guess per
+  lap of the table. With few players that still adds up quickly, but you can't brute-force
+  your number in one go.
 - **Vercel is not a deployment target** without a managed realtime service in front of it.
   Fly.io or Railway run this as-is.

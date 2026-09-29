@@ -74,6 +74,7 @@ async function main() {
     avatar: '🐶',
   })
   check('room created', created.ok === true, JSON.stringify(created))
+  const tokens = [created.token as string]
 
   for (let i = 1; i < NAMES.length; i++) {
     const result = await ask(sockets[i], 'room:join', {
@@ -83,7 +84,9 @@ async function main() {
       avatar: '🐱',
     })
     check(`${NAMES[i]} joined`, result.ok === true, JSON.stringify(result))
+    tokens.push(result.token)
   }
+  check('every player gets a resume token', tokens.every((t) => typeof t === 'string' && t.length > 0))
 
   await sleep(300)
   const lobby = caps[0].last()
@@ -133,6 +136,10 @@ async function main() {
     cap.seen.filter((v) => v.players.some((p: any) => p.isYou && p.number !== null && !p.solved)),
   )
   check('no self-number ever appears in any payload', leaks.length === 0, `${leaks.length} leaking frames`)
+  check(
+    'no resume token ever appears in any payload',
+    caps.every((cap) => cap.seen.every((v) => !tokens.some((t) => JSON.stringify(v).includes(t)))),
+  )
 
   const distinct = new Set(truth.values())
   console.log(`  (dealt numbers: ${[...truth.entries()].map(([k, v]) => `${k}=${v}`).join(', ')})`)
@@ -164,7 +171,8 @@ async function main() {
   await sleep(200)
   check('server still responsive after a no-ack emit', (await ask(sockets[0], 'room:pass')).ok !== undefined)
 
-  for (let round = 0; round < 6; round++) {
+  let wrongChecked = false
+  for (let round = 0; round < 12; round++) {
     view = caps[0].last()
     if (view.phase === 'finished') break
 
@@ -179,17 +187,24 @@ async function main() {
       break
     }
 
-    const wrongValue = answer === 1 ? 2 : 1
-    const wrong = await ask(target, 'room:guess', { value: wrongValue })
-    check(`wrong guess ${wrongValue} is accepted but incorrect`, wrong.ok === true && wrong.correct === false)
-    await sleep(150)
-    const afterWrong = caps[0].last()
-    check('turn stays put after a wrong guess', afterWrong.turnId === afterWrong.players[activeIndex].id)
-    check(
-      'wrong guess is recorded on the player',
-      afterWrong.players[activeIndex].guesses > 0,
-      `guesses=${afterWrong.players[activeIndex].guesses}`,
-    )
+    if (!wrongChecked) {
+      wrongChecked = true
+      const activeId = view.players[activeIndex].id
+      const wrongValue = answer === 1 ? 2 : 1
+      const wrong = await ask(target, 'room:guess', { value: wrongValue })
+      check(`wrong guess ${wrongValue} is accepted but incorrect`, wrong.ok === true && wrong.correct === false)
+      await sleep(150)
+      const afterWrong = caps[0].last()
+      check('a wrong guess passes the turn', afterWrong.turnId !== activeId, afterWrong.turnId)
+      check(
+        'wrong guess is recorded on the player',
+        afterWrong.players[activeIndex].guesses > 0,
+        `guesses=${afterWrong.players[activeIndex].guesses}`,
+      )
+      const again = await ask(target, 'room:guess', { value: answer })
+      check('cannot guess again after a wrong guess', again.ok === false, JSON.stringify(again))
+      continue
+    }
 
     const right = await ask(target, 'room:guess', { value: answer })
     check(`correct guess ${answer} is accepted`, right.ok === true && right.correct === true, JSON.stringify(right))
@@ -217,14 +232,33 @@ async function main() {
   check('numbers re-hidden', restarted.players.every((p: any) => !p.solved))
   check('guesses reset', restarted.players.every((p: any) => p.guesses === 0))
 
+  console.log('\njoining mid-game')
+  const late = await connect()
+  const lateCap = capture(late)
+  const lateJoin = await ask(late, 'room:join', { roomName: ROOM, password: PASSWORD, name: 'barbara', avatar: '🐸' })
+  check('can join a game in progress', lateJoin.ok === true, JSON.stringify(lateJoin))
+  await sleep(250)
+  const lateSeen = caps[0].last().players.find((p: any) => p.name === 'barbara')
+  check('late joiner is dealt a number', typeof lateSeen?.number === 'number', `got ${lateSeen?.number}`)
+  check('late joiner cannot see own number', lateCap.last()?.players.find((p: any) => p.isYou)?.number === null)
+  check('late joiner is added to the turn order', caps[0].last().players.at(-1)?.name === 'barbara')
+  check('late joiner leaves', (await ask(late, 'room:leave')).ok === true)
+  lateCap.stop()
+  late.close()
+  await sleep(150)
+
   console.log('\nreconnect')
-  const hostId = caps[0].last().you.id
+  const guestId = caps[0].last().players.find((p: any) => !p.isYou).id
   sockets[0].disconnect()
   await sleep(200)
   const revived = await connect()
   const revivedCap = capture(revived)
-  const resume = await ask(revived, 'room:resume', { code: ROOM, playerId: hostId })
-  check('resume with a real id works', resume.ok === true, JSON.stringify(resume))
+  check(
+    "resume with another player's public id rejected",
+    (await ask(revived, 'room:resume', { code: ROOM, playerId: guestId, token: guestId })).ok === false,
+  )
+  const resume = await ask(revived, 'room:resume', { code: ROOM, token: tokens[0] })
+  check('resume with the token works', resume.ok === true, JSON.stringify(resume))
   await sleep(300)
   check('resumed socket gets fresh state', revivedCap.last() !== undefined)
   check(
@@ -233,10 +267,26 @@ async function main() {
   )
   revivedCap.stop()
   check(
-    'resume with a bad id rejected',
-    (await ask(revived, 'room:resume', { code: ROOM, playerId: 'nope' })).ok === false,
+    'resume with a bad token rejected',
+    (await ask(revived, 'room:resume', { code: ROOM, token: 'nope' })).ok === false,
   )
+
+  // The same player on a second socket, then the first one drops late: the
+  // stale disconnect must not mark the live socket offline.
+  const second = await connect()
+  const secondCap = capture(second)
+  check('same player resumes on a second socket', (await ask(second, 'room:resume', { code: ROOM, token: tokens[0] })).ok === true)
+  await sleep(150)
   revived.close()
+  await sleep(250)
+  const hostAfterStale = caps[2].last().players.find((p: any) => p.name === 'ada')
+  check('stale disconnect leaves the live socket connected', hostAfterStale?.connected === true)
+  const framesBefore = secondCap.seen.length
+  await ask(sockets[2], 'room:resume', { code: ROOM, token: tokens[2] }) // triggers a broadcast
+  await sleep(200)
+  check('live socket still receives state after a stale disconnect', secondCap.seen.length > framesBefore)
+  secondCap.stop()
+  second.close()
 
   console.log('\nleaving')
   check('leave succeeds', (await ask(sockets[1], 'room:leave')).ok === true)
@@ -248,6 +298,25 @@ async function main() {
   check('players still in the room are connected', stillHere.every((p: any) => p.connected === true))
   const host = observer.players.find((p: any) => p.isHost)
   check('a disconnected player is flagged, not removed', host?.name === 'ada' && host?.connected === false)
+
+  console.log('\nswitching rooms')
+  const moved = await ask(sockets[3], 'room:create', {
+    roomName: `${ROOM}-b`,
+    password: PASSWORD,
+    name: NAMES[3],
+    avatar: '🐶',
+  })
+  check('a player in one room can create another', moved.ok === true, JSON.stringify(moved))
+  await sleep(150)
+  const switchedFrom = caps[3].seen.length
+  await ask(sockets[2], 'room:resume', { code: ROOM, token: tokens[2] }) // triggers a broadcast
+  await sleep(200)
+  const oldFrames = caps[3].seen.slice(switchedFrom).filter((v: any) => v.code === ROOM)
+  check('the old room stops sending state to a socket that left it', oldFrames.length === 0, `${oldFrames.length} frames`)
+  check(
+    'the player who switched is shown offline in the old room',
+    caps[2].last().players.find((p: any) => p.name === NAMES[3])?.connected === false,
+  )
 
   for (const cap of caps) cap.stop()
   for (const socket of sockets) socket.close()

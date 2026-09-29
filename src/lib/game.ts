@@ -35,9 +35,10 @@ export function addPlayer(
   const now = Date.now()
   const player: Player = {
     id: input.id ?? randomUUID(),
+    token: randomUUID(),
     name,
     avatar: input.avatar,
-    number: null,
+    number: room.phase === 'playing' ? randomInt(room.min, room.max + 1) : null,
     solved: false,
     guesses: 0,
     connected: true,
@@ -50,6 +51,14 @@ export function addPlayer(
   if (!room.hostId) room.hostId = player.id
   room.lastActivityAt = now
   return { ok: true, player }
+}
+
+export function findPlayerByToken(room: Room, token: unknown): Player | null {
+  if (typeof token !== 'string' || !token) return null
+  for (const player of room.players.values()) {
+    if (player.token === token) return player
+  }
+  return null
 }
 
 export function removePlayer(room: Room, playerId: string): void {
@@ -134,6 +143,7 @@ export function submitGuess(room: Room, playerId: string, value: number): GuessO
     advanceTurn(room)
     return { ok: true, correct: true, correctNumber: player.number }
   }
+  advanceTurn(room)
   return { ok: true, correct: false, correctNumber: null }
 }
 

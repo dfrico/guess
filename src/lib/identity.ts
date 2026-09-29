@@ -54,8 +54,8 @@ export function loadSession(code: string): Session | null {
     const raw = window.localStorage.getItem(sessionKey(code))
     if (!raw) return null
     const parsed = JSON.parse(raw) as Partial<Session>
-    if (typeof parsed.playerId !== 'string') return null
-    return { roomCode: code, playerId: parsed.playerId }
+    if (typeof parsed.token !== 'string') return null
+    return { roomCode: code, token: parsed.token }
   } catch {
     return null
   }
@@ -63,7 +63,7 @@ export function loadSession(code: string): Session | null {
 
 export function saveSession(session: Session): void {
   if (typeof window === 'undefined') return
-  window.localStorage.setItem(sessionKey(session.roomCode), JSON.stringify({ playerId: session.playerId }))
+  window.localStorage.setItem(sessionKey(session.roomCode), JSON.stringify({ token: session.token }))
 }
 
 export function clearSession(code: string): void {

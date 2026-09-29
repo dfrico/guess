@@ -43,7 +43,7 @@ export function RoomScreen({ code }: { code: string }) {
       }
       socket.emit(
         'room:resume',
-        { code, playerId: session.playerId },
+        { code, token: session.token },
         (result: { ok: boolean }) => {
           if (!result.ok) {
             clearSession(code)
@@ -54,6 +54,7 @@ export function RoomScreen({ code }: { code: string }) {
     }
 
     const onState = (next: RoomView) => {
+      if (next.code !== code) return
       setView(next)
       if (next.lastSolved && next.lastSolved.at !== lastSolvedAt.current) {
         lastSolvedAt.current = next.lastSolved.at
