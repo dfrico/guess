@@ -7,6 +7,7 @@ import { GuessSheet } from '@/components/GuessSheet'
 import { GridLegend, PlayerCell } from '@/components/PlayerCell'
 import { PlayerList } from '@/components/PlayerList'
 import { clearSession, loadSession } from '@/lib/identity'
+import { playerColor } from '@/lib/player-colors'
 import { emitWithAck, getSocket } from '@/lib/socket-client'
 import { useSounds } from '@/lib/sounds'
 import type { RoomView } from '@/lib/types'
@@ -148,40 +149,36 @@ export function RoomScreen({ code }: { code: string }) {
       <Confetti trigger={confetti} />
 
       {!connected && (
-        <div className="animate-rise mb-4 rounded-xl border border-bad/40 bg-bad/10 px-4 py-2.5 text-center text-sm text-bad">
+        <div className="animate-rise mb-4 rounded-xl border-2 border-berry bg-berry/10 px-4 py-2.5 text-center text-sm font-semibold text-berry">
           Connection lost. Reconnecting — your number is safe.
         </div>
       )}
 
-      <header className="mb-5 flex flex-wrap items-center gap-3">
-        <div className="flex items-center gap-2 rounded-xl border border-edge bg-panel/70 px-3 py-2">
-          <span className="text-[10px] font-bold tracking-widest text-muted uppercase">room</span>
-          <span className="font-mono text-sm font-bold text-accent-2">{view.code}</span>
+      <header className="mb-6 flex flex-wrap items-center gap-3">
+        <div className="card flex items-center gap-2 rounded-xl px-3 py-2 shadow-hard-sm">
+          <span className="text-[11px] font-extrabold tracking-widest text-muted uppercase">room</span>
+          <span className="font-display text-base text-blue">{view.code}</span>
           <CopyButton />
         </div>
 
-        <Progress solved={view.solvedCount} total={view.total} />
+        {view.phase !== 'lobby' && <Progress solved={view.solvedCount} total={view.total} />}
 
         <div className="ml-auto flex items-center gap-2">
           <button
             type="button"
             onClick={() => setMuted((value) => !value)}
             aria-label={muted ? 'Unmute' : 'Mute'}
-            className="rounded-xl border border-edge bg-panel/70 px-3 py-2 text-sm text-muted transition hover:text-ink"
+            className="btn btn-secondary h-10 w-10 text-base"
           >
             {muted ? '🔇' : '🔊'}
           </button>
-          <button
-            type="button"
-            onClick={leave}
-            className="rounded-xl border border-edge bg-panel/70 px-3 py-2 text-sm text-muted transition hover:border-bad/40 hover:text-bad"
-          >
+          <button type="button" onClick={leave} className="btn btn-secondary h-10 px-4 text-sm">
             Leave
           </button>
         </div>
       </header>
 
-      <div className="grid gap-4 lg:grid-cols-[15rem_1fr]">
+      <div className="grid gap-5 lg:grid-cols-[15rem_1fr]">
         <PlayerList
           players={view.players}
           youId={view.you.id}
@@ -200,18 +197,12 @@ export function RoomScreen({ code }: { code: string }) {
 
           {view.phase === 'playing' && (
             <>
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                {view.players.map((player) => (
-                  <PlayerCell
-                    key={player.id}
-                    player={player}
-                    min={view.min}
-                    max={view.max}
-                    shaking={shaking === player.id}
-                  />
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 sm:gap-5">
+                {view.players.map((player, seat) => (
+                  <PlayerCell key={player.id} player={player} seat={seat} shaking={shaking === player.id} />
                 ))}
               </div>
-              <div className="mt-4">
+              <div className="mt-5">
                 <GridLegend min={view.min} max={view.max} />
               </div>
             </>
@@ -235,7 +226,7 @@ export function RoomScreen({ code }: { code: string }) {
           )}
 
           {actionError && view.phase === 'playing' && (
-            <p className="animate-rise mt-3 rounded-xl border border-bad/40 bg-bad/10 px-4 py-2.5 text-sm text-bad">
+            <p className="animate-rise mt-3 rounded-xl border-2 border-berry bg-berry/10 px-4 py-2.5 text-sm font-semibold text-berry">
               {actionError}
             </p>
           )}
@@ -269,7 +260,7 @@ function CopyButton() {
           return
         }
       }}
-      className="rounded-md px-1.5 text-xs text-muted transition hover:text-ink"
+      className="rounded-md px-1.5 text-sm transition hover:bg-panel-2"
       aria-label="Copy invite link"
     >
       {copied ? '✓' : '🔗'}
@@ -280,12 +271,12 @@ function CopyButton() {
 function Progress({ solved, total }: { solved: number; total: number }) {
   const pct = total === 0 ? 0 : Math.round((solved / total) * 100)
   return (
-    <div className="flex items-center gap-2 rounded-xl border border-edge bg-panel/70 px-3 py-2">
-      <div className="h-1.5 w-24 overflow-hidden rounded-full bg-panel-2">
-        <div className="h-full rounded-full bg-good transition-all duration-500" style={{ width: `${pct}%` }} />
+    <div className="card flex items-center gap-2.5 rounded-xl px-3 py-2 shadow-hard-sm">
+      <div className="h-3 w-24 overflow-hidden rounded-full border-2 border-ink bg-panel-2">
+        <div className="h-full bg-green transition-all duration-500" style={{ width: `${pct}%` }} />
       </div>
-      <span className="text-xs font-semibold text-muted tabular-nums">
-        {solved}/{total}
+      <span className="text-xs font-bold tabular-nums">
+        {solved}/{total} solved
       </span>
     </div>
   )
@@ -301,21 +292,25 @@ function Lobby({
   actionError: string | null
 }) {
   return (
-    <div className="rounded-3xl border border-edge bg-panel/70 p-6 text-center sm:p-10">
-      <h2 className="text-2xl font-black">Waiting room</h2>
+    <div className="card p-6 text-center sm:p-10">
+      <h2 className="font-display text-3xl">Waiting room</h2>
       <p className="mx-auto mt-2 max-w-md text-sm text-muted">
         Share the invite link and the room password. Numbers get dealt when the host starts.
       </p>
 
-      <div className="mt-6 flex flex-wrap items-center justify-center gap-2">
-        {view.players.map((player) => (
+      <div className="mt-6 flex flex-wrap items-center justify-center gap-2.5">
+        {view.players.map((player, seat) => (
           <span
             key={player.id}
-            className="flex items-center gap-2 rounded-full border border-edge bg-panel-2 px-3 py-1.5 text-sm"
+            className={`flex items-center gap-2 rounded-full border-2 border-ink py-1.5 pr-3.5 pl-1.5 text-sm font-bold shadow-hard-sm ${
+              playerColor(seat).band
+            } ${player.connected ? '' : 'opacity-60'}`}
           >
-            <span aria-hidden>{player.avatar}</span>
-            <span className="font-semibold">{player.name}</span>
-            {!player.connected && <span className="text-xs text-muted">(away)</span>}
+            <span className="grid h-7 w-7 place-items-center rounded-full bg-card text-base" aria-hidden>
+              {player.avatar}
+            </span>
+            {player.name}
+            {!player.connected && <span className="text-xs font-semibold opacity-80">(away)</span>}
           </span>
         ))}
       </div>
@@ -326,7 +321,7 @@ function Lobby({
             type="button"
             onClick={onStart}
             disabled={view.players.length < 2}
-            className="rounded-xl bg-accent px-8 py-3.5 font-bold text-white shadow-lg shadow-accent/25 transition hover:bg-accent/90 disabled:cursor-not-allowed disabled:bg-panel-2 disabled:text-muted/70 disabled:shadow-none"
+            className="btn btn-primary px-8 py-3.5 text-lg"
           >
             Deal the numbers
           </button>
@@ -335,12 +330,12 @@ function Lobby({
           )}
         </div>
       ) : (
-        <p className="mt-8 animate-pulse-soft text-sm font-semibold text-accent-2">
+        <p className="mt-8 animate-pulse-soft text-sm font-bold text-blue">
           Waiting for the host to start…
         </p>
       )}
 
-      {actionError && <p className="mt-4 text-sm text-bad">{actionError}</p>}
+      {actionError && <p className="mt-4 text-sm font-semibold text-berry">{actionError}</p>}
     </div>
   )
 }
@@ -351,28 +346,24 @@ function Finished({ view, onRestart }: { view: RoomView; onRestart: () => void }
 
   return (
     <>
-      <div className="animate-rise mb-4 rounded-3xl border border-good/40 bg-good/10 p-6 text-center">
-        <h2 className="text-2xl font-black text-good">{everyone ? 'Everyone got it' : "That's a wrap"}</h2>
-        <p className="mt-2 text-sm text-muted">
+      <div className="animate-rise card mb-6 bg-green p-6 text-center text-white">
+        <h2 className="font-display text-3xl">{everyone ? 'Everyone got it' : "That's a wrap"}</h2>
+        <p className="mt-2 text-sm font-semibold text-white/85">
           {everyone
             ? 'Nobody out-guessed anybody. Suspicious.'
-            : `Solved: ${winners.map((player) => player.name).join(', ')}`}
+            : `Solved: ${winners.map((player) => player.name).join(', ') || 'nobody'}`}
         </p>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-        {view.players.map((player) => (
-          <PlayerCell key={player.id} player={player} min={view.min} max={view.max} shaking={false} />
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 sm:gap-5">
+        {view.players.map((player, seat) => (
+          <PlayerCell key={player.id} player={player} seat={seat} shaking={false} />
         ))}
       </div>
 
       {view.you.isHost && (
-        <div className="mt-6 text-center">
-          <button
-            type="button"
-            onClick={onRestart}
-            className="rounded-xl bg-accent px-8 py-3 font-bold text-white shadow-lg shadow-accent/25 transition hover:bg-accent/90"
-          >
+        <div className="mt-8 text-center">
+          <button type="button" onClick={onRestart} className="btn btn-primary px-8 py-3.5 text-lg">
             Deal again
           </button>
         </div>
@@ -401,27 +392,19 @@ function ActionBar({
   onEnd: () => void
 }) {
   return (
-    <div className="mt-6 rounded-2xl border border-edge bg-panel/70 p-4">
+    <div className={`card mt-6 p-4 sm:p-5 ${myTurn ? 'bg-yellow-soft' : ''}`}>
       {notice && (
-        <p className="animate-rise mb-3 rounded-xl border border-bad/40 bg-bad/10 px-4 py-2.5 text-center text-sm font-semibold text-bad">
+        <p className="animate-rise mb-3 rounded-xl border-2 border-berry bg-berry/10 px-4 py-2.5 text-center text-sm font-bold text-berry">
           {notice}
         </p>
       )}
 
       {myTurn ? (
         <div className="flex flex-col items-center gap-3 sm:flex-row sm:justify-center">
-          <button
-            type="button"
-            onClick={onGuess}
-            className="w-full rounded-xl bg-accent px-8 py-4 text-lg font-black text-white shadow-lg shadow-accent/25 transition hover:bg-accent/90 sm:w-auto"
-          >
+          <button type="button" onClick={onGuess} className="btn btn-primary w-full px-8 py-4 text-lg sm:w-auto">
             I think I know it
           </button>
-          <button
-            type="button"
-            onClick={onPass}
-            className="rounded-xl border border-edge px-6 py-4 font-semibold text-muted transition hover:bg-panel-2 hover:text-ink"
-          >
+          <button type="button" onClick={onPass} className="btn btn-secondary w-full px-6 py-4 sm:w-auto">
             Pass my turn
           </button>
         </div>
@@ -432,13 +415,13 @@ function ActionBar({
               <span className="text-base" aria-hidden>
                 {turnPlayer.avatar}
               </span>{' '}
-              <span className="font-semibold text-ink">{turnPlayer.name}</span> is on the hot seat.
+              <span className="font-bold text-ink">{turnPlayer.name}</span> is on the hot seat.
               {me?.number != null && (
                 <>
                   {' '}
                   Yours is{' '}
                   <span className="font-display text-lg text-ink tabular-nums">{me.number}</span>
-                  {me.solved && <span className="text-good"> — solved</span>}.
+                  {me.solved && <span className="font-bold text-green"> — solved</span>}.
                 </>
               )}
             </>
@@ -449,11 +432,11 @@ function ActionBar({
       )}
 
       {isHost && (
-        <div className="mt-4 border-t border-edge pt-3 text-center">
+        <div className="mt-4 border-t-2 border-dashed border-ink/15 pt-3 text-center">
           <button
             type="button"
             onClick={onEnd}
-            className="text-xs text-muted/70 underline-offset-2 transition hover:text-bad hover:underline"
+            className="text-xs font-semibold text-muted underline-offset-2 transition hover:text-berry hover:underline"
           >
             End the game and reveal everything
           </button>

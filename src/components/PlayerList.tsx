@@ -1,5 +1,6 @@
 'use client'
 
+import { playerColor } from '@/lib/player-colors'
 import type { PlayerView } from '@/lib/types'
 
 interface Props {
@@ -11,52 +12,52 @@ interface Props {
 
 export function PlayerList({ players, youId, isHost, onKick }: Props) {
   return (
-    <aside className="rounded-2xl border border-edge bg-panel/70 p-3 backdrop-blur lg:sticky lg:top-4">
-      <h2 className="mb-2 px-1 text-[11px] font-bold tracking-widest text-muted uppercase">
-        Turn order
-      </h2>
-      <ol className="flex flex-wrap gap-1.5 lg:block lg:space-y-1">
-        {players.map((player, index) => (
+    <aside className="card self-start p-3 lg:sticky lg:top-4">
+      <h2 className="mb-2.5 px-1 font-display text-sm tracking-wide uppercase">Turn order</h2>
+      <ol className="flex flex-wrap gap-2 lg:block lg:space-y-2">
+        {players.map((player, seat) => (
           <li key={player.id}>
             <div
-              className={`flex items-center gap-2 rounded-xl border px-2.5 py-2 transition ${
+              className={`flex items-center gap-2 rounded-xl border-2 px-2 py-1.5 transition ${
                 player.solved
-                  ? 'border-good/25 bg-good/5 opacity-60'
+                  ? 'border-transparent bg-green/10'
                   : player.isTurn
-                    ? 'border-accent/60 bg-accent/15'
-                    : 'border-transparent bg-panel-2/50'
+                    ? 'border-ink bg-yellow shadow-hard-sm'
+                    : 'border-transparent bg-panel-2/70'
               }`}
             >
-              <span className="w-4 shrink-0 text-center text-[11px] font-bold text-muted/70 tabular-nums">
-                {index + 1}
-              </span>
-              <span className="text-base" aria-hidden>
+              <span
+                className={`grid h-8 w-8 shrink-0 place-items-center rounded-full border-2 border-ink text-base ${
+                  playerColor(seat).token
+                }`}
+                aria-hidden
+              >
                 {player.avatar}
               </span>
 
               <span className="min-w-0 flex-1">
                 <span
-                  className={`block truncate text-sm font-semibold ${
-                    player.solved ? 'text-good/90 line-through' : 'text-ink'
+                  className={`block truncate text-sm font-bold ${
+                    player.solved ? 'text-green line-through decoration-2' : 'text-ink'
                   }`}
                 >
                   {player.name}
-                  {player.id === youId && <span className="text-muted"> (you)</span>}
+                  {player.id === youId && <span className="font-semibold text-muted"> (you)</span>}
                 </span>
                 {player.isTurn && !player.solved && (
-                  <span className="block text-[10px] font-bold tracking-wider text-accent-2 uppercase">
+                  <span className="block text-[11px] font-extrabold tracking-wider text-ink uppercase">
                     asking now
                   </span>
                 )}
                 {!player.solved && player.guesses > 0 && (
-                  <span className="block text-[10px] text-muted/80">
+                  <span className="block text-[11px] font-semibold text-muted">
                     {player.guesses} wrong {player.guesses === 1 ? 'guess' : 'guesses'}
                   </span>
                 )}
               </span>
 
               {player.solved ? (
-                <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-good/90 text-canvas">
+                <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full border-2 border-ink bg-green text-white">
                   <svg viewBox="0 0 20 20" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth={3.5}>
                     <path d="M4 10.5 8 14.5 16 6" strokeLinecap="round" strokeLinejoin="round" />
                   </svg>
@@ -69,7 +70,7 @@ export function PlayerList({ players, youId, isHost, onKick }: Props) {
                     onClick={() => onKick(player.id)}
                     title={`Remove ${player.name}`}
                     aria-label={`Remove ${player.name}`}
-                    className="shrink-0 rounded-md px-1.5 text-muted/60 transition hover:bg-bad/15 hover:text-bad"
+                    className="shrink-0 rounded-md px-1.5 text-muted transition hover:bg-berry/15 hover:text-berry"
                   >
                     ✕
                   </button>
@@ -77,7 +78,7 @@ export function PlayerList({ players, youId, isHost, onKick }: Props) {
               )}
 
               {!player.connected && (
-                <span className="h-2 w-2 shrink-0 rounded-full bg-muted/70" title="Disconnected" />
+                <span className="h-2.5 w-2.5 shrink-0 rounded-full border border-ink bg-muted/60" title="Disconnected" />
               )}
             </div>
           </li>

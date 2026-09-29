@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 
-const COLORS = ['#7c5cff', '#22d3ee', '#f472b6', '#facc15', '#34d399', '#fb923c', '#a78bfa']
+const COLORS = ['#d4602a', '#3c66ad', '#33936a', '#9c2f56', '#f2c94c', '#2d5436']
 
 const POOL_SIZE = 320
 const VISIBLE_COUNT = 44

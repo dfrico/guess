@@ -17,8 +17,14 @@ interface Props {
   error: string | null
 }
 
-const field =
-  'w-full rounded-xl border border-edge bg-panel-2/70 px-4 py-3 text-ink placeholder:text-muted/60 outline-none transition focus:border-accent focus:bg-panel-2'
+// Each letter of "Guess" is a different game piece, like a box-lid logo.
+const TITLE = [
+  { letter: 'G', className: 'text-orange -rotate-6' },
+  { letter: 'u', className: 'text-blue rotate-3' },
+  { letter: 'e', className: 'text-green -rotate-2' },
+  { letter: 's', className: 'text-berry rotate-6' },
+  { letter: 's', className: 'text-yellow -rotate-3' },
+]
 
 export function JoinForm({
   mode,
@@ -47,26 +53,30 @@ export function JoinForm({
       }}
     >
       <div className="mb-8 text-center">
-        <h1 className="text-4xl font-black tracking-tight sm:text-5xl">
-          <span className="bg-gradient-to-r from-accent via-fuchsia-400 to-accent-2 bg-clip-text text-transparent">
-            Guess
-          </span>{' '}
-          <span className="text-ink/90">My Number</span>
+        <h1 className="font-display leading-none">
+          <span className="inline-flex text-6xl [text-shadow:3px_3px_0_var(--color-ink)] sm:text-7xl" aria-label="Guess">
+            {TITLE.map(({ letter, className }, index) => (
+              <span key={index} className={`inline-block ${className}`} aria-hidden>
+                {letter}
+              </span>
+            ))}
+          </span>
+          <span className="mt-1 block text-3xl text-ink sm:text-4xl">My Number</span>
         </h1>
-        <p className="mx-auto mt-3 max-w-sm text-sm text-muted">
+        <p className="mx-auto mt-4 max-w-sm text-sm font-medium text-muted">
           Everyone sees every number but their own. Ask questions, narrow it down, call it.
         </p>
       </div>
 
-      <div className="mb-5 flex rounded-xl border border-edge bg-panel/60 p-1">
+      <div className="card mb-5 flex rounded-2xl p-1.5 shadow-hard-sm">
         {(['create', 'join'] as const).map((option) => (
           <button
             key={option}
             type="button"
             onClick={() => onMode(option)}
             data-active={mode === option}
-            className={`flex-1 rounded-lg px-4 py-2 text-sm font-semibold transition ${
-              mode === option ? 'bg-accent text-white shadow-lg shadow-accent/25' : 'text-muted hover:text-ink'
+            className={`flex-1 rounded-xl border-2 px-4 py-2 text-sm font-bold transition ${
+              mode === option ? 'border-ink bg-blue text-white' : 'border-transparent text-muted hover:text-ink'
             }`}
           >
             {option === 'create' ? 'Start a room' : 'Join a room'}
@@ -74,9 +84,9 @@ export function JoinForm({
         ))}
       </div>
 
-      <div className="space-y-4 rounded-2xl border border-edge bg-panel/70 p-5 shadow-2xl shadow-black/40 backdrop-blur">
+      <div className="card space-y-4 p-5 shadow-hard-lg">
         <div>
-          <label htmlFor="name" className="mb-1.5 block text-xs font-medium tracking-wide text-muted uppercase">
+          <label htmlFor="name" className="label">
             Your name
           </label>
           <input
@@ -86,16 +96,16 @@ export function JoinForm({
             placeholder="Dana"
             maxLength={20}
             autoComplete="off"
-            className={field}
+            className="field"
           />
         </div>
 
         <div>
-          <label htmlFor="room" className="mb-1.5 block text-xs font-medium tracking-wide text-muted uppercase">
+          <label htmlFor="room" className="label">
             Room name
           </label>
           <div className="relative">
-            <span className="pointer-events-none absolute top-1/2 left-4 -translate-y-1/2 text-muted">/</span>
+            <span className="pointer-events-none absolute top-1/2 left-4 -translate-y-1/2 font-bold text-muted">/</span>
             <input
               id="room"
               value={roomName}
@@ -105,18 +115,18 @@ export function JoinForm({
               autoComplete="off"
               autoCapitalize="none"
               spellCheck={false}
-              className={`${field} pl-8`}
+              className="field pl-8"
             />
           </div>
           {code.length > 0 && (
-            <p className="mt-1.5 text-xs text-muted">
-              room: <span className="font-mono text-accent-2">{code}</span>
+            <p className="mt-1.5 text-xs font-semibold text-muted">
+              room: <span className="font-display text-blue">{code}</span>
             </p>
           )}
         </div>
 
         <div>
-          <label htmlFor="password" className="mb-1.5 block text-xs font-medium tracking-wide text-muted uppercase">
+          <label htmlFor="password" className="label">
             Room password
           </label>
           <input
@@ -126,14 +136,14 @@ export function JoinForm({
             onChange={(event) => onPassword(event.target.value)}
             placeholder="shared secret"
             autoComplete="off"
-            className={field}
+            className="field"
           />
         </div>
 
         <AvatarPicker value={avatar} onChange={onAvatar} />
 
         {error && (
-          <p className="animate-rise rounded-xl border border-bad/40 bg-bad/10 px-4 py-2.5 text-sm text-bad">
+          <p className="animate-rise rounded-xl border-2 border-berry bg-berry/10 px-4 py-2.5 text-sm font-semibold text-berry">
             {error}
           </p>
         )}
@@ -141,14 +151,14 @@ export function JoinForm({
         <button
           type="submit"
           disabled={busy || missing !== null}
-          className="w-full rounded-xl bg-accent px-4 py-3.5 font-bold text-white shadow-lg shadow-accent/25 transition hover:bg-accent/90 disabled:cursor-not-allowed disabled:bg-panel-2 disabled:text-muted/70 disabled:shadow-none"
+          className="btn btn-primary w-full px-4 py-3.5 text-lg"
         >
           {busy ? 'Opening…' : mode === 'create' ? 'Create room' : 'Enter room'}
         </button>
-        {missing && !busy && <p className="-mt-2 text-center text-xs text-muted">Add {missing} to continue.</p>}
+        {missing && !busy && <p className="-mt-1 text-center text-xs font-semibold text-muted">Add {missing} to continue.</p>}
       </div>
 
-      <p className="mt-6 text-center text-xs text-muted/80">
+      <p className="mt-6 text-center text-xs font-medium text-muted">
         Talk to each other on Discord — this app just tracks the numbers and the turns.
       </p>
     </form>

@@ -33,7 +33,7 @@ export function GuessSheet({ min, max, playerName, onCancel, onSubmit }: Props) 
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 p-4 backdrop-blur-sm sm:items-center"
+      className="fixed inset-0 z-50 flex items-end justify-center bg-ink/45 p-4 backdrop-blur-[2px] sm:items-center"
       onClick={onCancel}
       role="presentation"
     >
@@ -42,9 +42,9 @@ export function GuessSheet({ min, max, playerName, onCancel, onSubmit }: Props) 
         aria-modal="true"
         aria-label="Guess your number"
         onClick={(event) => event.stopPropagation()}
-        className="animate-pop-in w-full max-w-sm rounded-3xl border border-edge bg-panel p-6 shadow-2xl shadow-black/60"
+        className="animate-pop-in card w-full max-w-sm p-6 shadow-hard-lg"
       >
-        <h2 className="text-xl font-bold">Commit to a number</h2>
+        <h2 className="font-display text-2xl">Commit to a number</h2>
         <p className="mt-1 text-sm text-muted">{playerName}, is this yours? A wrong guess ends your turn.</p>
 
         <form
@@ -61,25 +61,25 @@ export function GuessSheet({ min, max, playerName, onCancel, onSubmit }: Props) 
             inputMode="numeric"
             autoComplete="off"
             aria-label="Your number"
-            className="w-full rounded-2xl border-2 border-edge bg-panel-2 py-5 text-center font-display text-6xl tabular-nums outline-none transition focus:border-accent"
+            className="field py-5 text-center font-display text-6xl tabular-nums"
             placeholder="?"
           />
-          <p className="mt-2 h-4 text-center text-xs text-muted">
+          <p className="mt-2 h-4 text-center text-xs font-semibold text-muted">
             {numeric === '' ? `${min} – ${max}` : valid ? 'ready' : `must be ${min}–${max}`}
           </p>
 
-          <div className="mt-4 flex gap-2">
+          <div className="mt-4 flex gap-3">
             <button
               type="button"
               onClick={onCancel}
-              className="flex-1 rounded-xl border border-edge px-4 py-3 font-semibold text-muted transition hover:bg-panel-2 hover:text-ink"
+              className="btn btn-secondary flex-1 px-4 py-3"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={!valid}
-              className="flex-1 rounded-xl bg-accent px-4 py-3 font-bold text-white transition hover:bg-accent/90 disabled:cursor-not-allowed disabled:bg-panel-2 disabled:text-muted/70"
+              className="btn btn-primary flex-1 px-4 py-3"
             >
               Guess it
             </button>
