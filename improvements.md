@@ -24,8 +24,10 @@ Things worth doing next, most valuable first. Items already done have been remov
   `getTurnId`, unlike `submitGuess`.
 - **The host can redeal mid-game.** Nothing stops a direct `room:start` emit while a game is
   running.
-- **Disconnected players never leave.** A player who disconnects in the lobby stays there, so
-  a room whose players have all gone stays "in use" for up to 6 hours.
+- **Disconnected players linger in the lobby.** A player who disconnects in the lobby stays
+  listed as "away" until they're kicked. A room with nobody connected can now be taken over
+  after 2 minutes, but there's still no admin way to delete a room on demand. A
+  `DELETE /rooms/<code>` on the loopback metrics server would be one option.
 - **The room preview can be wrong.** `normalizeRoomName` slices after stripping trailing
   hyphens, so the live preview can end in `-` while the real code doesn't.
 

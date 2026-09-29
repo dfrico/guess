@@ -202,7 +202,9 @@ so the current asker keeps their turn.
 Postgres means writing a second implementation and nothing else. The in-memory version is held
 on a `Symbol.for()` global so Next's dev-mode module reloading doesn't duplicate it.
 
-A sweeper drops rooms idle for 6 hours. `sweep` is already part of the interface so a
+A room whose players have all been disconnected for 2 minutes counts as abandoned, and
+`room:create` can reuse its name. That covers a tab closed before the game started, which
+would otherwise hold the name until the sweeper runs. A sweeper drops rooms idle for 6 hours. `sweep` is already part of the interface so a
 database-backed version can clean up without touching callers. It returns how many rooms it
 removed, which feeds `guess_rooms_swept_total`.
 

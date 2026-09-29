@@ -89,6 +89,16 @@ function nextHostId(room: Room): string {
 // A host who drops (rather than leaves) keeps the role for a grace period so a
 // flaky phone doesn't cost them the room. After that, hand it to someone who
 // is actually here, or nobody could deal, redeal or kick.
+// Nobody has been connected for a while: a tab closed before the game got going,
+// or everyone went home. Such a room can be taken over by a new create. The
+// grace period covers a whole table briefly dropping off wifi at once.
+export function isAbandoned(room: Room, graceMs: number, now = Date.now()): boolean {
+  for (const player of room.players.values()) {
+    if (player.connected) return false
+  }
+  return now - room.lastActivityAt >= graceMs
+}
+
 export function migrateHostIfAway(room: Room, graceMs: number, now = Date.now()): boolean {
   const host = room.players.get(room.hostId)
   if (host?.connected) return false

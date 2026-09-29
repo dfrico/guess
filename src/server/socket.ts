@@ -4,6 +4,7 @@ import {
   advanceTurn,
   endGame,
   findPlayerByToken,
+  isAbandoned,
   isGameOver,
   migrateHostIfAway,
   removePlayer,
@@ -35,6 +36,9 @@ const STATE = 'room:state'
 
 // How long a dropped host keeps the role before it passes to someone else.
 const HOST_GRACE_MS = 30_000
+
+// How long a room must have nobody connected before its name can be reused.
+const ABANDONED_AFTER_MS = 2 * 60_000
 
 function noop(): void {}
 
@@ -172,7 +176,8 @@ export function registerSocketHandlers(io: Server): void {
       }
       if (!payload?.password?.trim()) return ack({ ok: false, error: 'Set a room password.' })
 
-      if ((await store.get(code))?.players.size) {
+      const existing = await store.get(code)
+      if (existing?.players.size && !isAbandoned(existing, ABANDONED_AFTER_MS)) {
         return ack({ ok: false, error: `"${code}" is already in use. Try another name.` })
       }
       await store.delete(code)
