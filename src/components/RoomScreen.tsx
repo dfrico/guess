@@ -326,7 +326,7 @@ function Lobby({
             type="button"
             onClick={onStart}
             disabled={view.players.length < 2}
-            className="rounded-xl bg-accent px-8 py-3.5 font-bold text-white shadow-lg shadow-accent/25 transition hover:bg-accent/90 disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none"
+            className="rounded-xl bg-accent px-8 py-3.5 font-bold text-white shadow-lg shadow-accent/25 transition hover:bg-accent/90 disabled:cursor-not-allowed disabled:bg-panel-2 disabled:text-muted/70 disabled:shadow-none"
           >
             Deal the numbers
           </button>
@@ -437,7 +437,7 @@ function ActionBar({
                 <>
                   {' '}
                   Yours is{' '}
-                  <span className="font-black text-ink tabular-nums">{me.number}</span>
+                  <span className="font-display text-lg text-ink tabular-nums">{me.number}</span>
                   {me.solved && <span className="text-good"> — solved</span>}.
                 </>
               )}

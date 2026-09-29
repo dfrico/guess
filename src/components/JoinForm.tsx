@@ -36,6 +36,7 @@ export function JoinForm({
   error,
 }: Props) {
   const code = normalizeRoomName(roomName)
+  const missing = !name.trim() ? 'your name' : !code ? 'a room name' : !password ? 'a room password' : null
 
   return (
     <form
@@ -139,11 +140,12 @@ export function JoinForm({
 
         <button
           type="submit"
-          disabled={busy || !name.trim() || !code || !password}
-          className="w-full rounded-xl bg-accent px-4 py-3.5 font-bold text-white shadow-lg shadow-accent/25 transition hover:bg-accent/90 disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none"
+          disabled={busy || missing !== null}
+          className="w-full rounded-xl bg-accent px-4 py-3.5 font-bold text-white shadow-lg shadow-accent/25 transition hover:bg-accent/90 disabled:cursor-not-allowed disabled:bg-panel-2 disabled:text-muted/70 disabled:shadow-none"
         >
           {busy ? 'Opening…' : mode === 'create' ? 'Create room' : 'Enter room'}
         </button>
+        {missing && !busy && <p className="-mt-2 text-center text-xs text-muted">Add {missing} to continue.</p>}
       </div>
 
       <p className="mt-6 text-center text-xs text-muted/80">

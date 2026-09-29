@@ -9,36 +9,30 @@ interface Props {
   shaking: boolean
 }
 
-export function PlayerCell({ player, min, max, shaking }: Props) {
+export function PlayerCell({ player, shaking }: Props) {
   const hidden = player.isYou && !player.solved && player.number === null
+  const asking = player.isTurn && !player.solved
 
-  if (hidden) {
-    return (
-      <div
-        className={`relative flex aspect-square flex-col items-center justify-center gap-1 rounded-3xl border-2 border-dashed border-edge bg-panel/40 p-3 ${
-          player.isTurn ? 'animate-turn-ring' : ''
-        } ${shaking ? 'animate-shake' : ''}`}
-      >
-        <span className="text-5xl sm:text-6xl" aria-hidden>
-          {player.avatar}
-        </span>
-        <span className="text-xs font-semibold text-ink/80">{player.name}</span>
-        <span className="text-[10px] font-medium tracking-widest text-muted uppercase">your number</span>
-        {!player.connected && <OfflineDot />}
-      </div>
-    )
-  }
+  const frame = player.solved
+    ? 'animate-pop-in border border-good/40 bg-good/10 opacity-70'
+    : asking
+      ? `animate-turn-ring z-10 scale-[1.03] border border-accent bg-accent/10 ${hidden ? 'border-dashed' : ''}`
+      : hidden
+        ? 'border-2 border-dashed border-edge bg-panel/40'
+        : 'border border-edge bg-panel/80'
 
   return (
     <div
-      className={`relative flex aspect-square flex-col items-center justify-center gap-1 overflow-hidden rounded-3xl border p-3 transition ${
-        player.solved
-          ? 'animate-pop-in border-good/40 bg-good/10 opacity-70'
-          : player.isTurn
-            ? 'animate-turn-ring border-accent/60 bg-panel-2'
-            : 'border-edge bg-panel/80'
-      } ${shaking ? 'animate-shake' : ''}`}
+      className={`relative flex aspect-square flex-col items-center justify-center gap-1 overflow-hidden rounded-3xl p-3 transition ${frame} ${
+        shaking ? 'animate-shake' : ''
+      }`}
     >
+      {asking && (
+        <span className="absolute top-2.5 left-2.5 rounded-full bg-accent px-2 py-0.5 text-[11px] font-bold tracking-wider text-white uppercase">
+          asking
+        </span>
+      )}
+
       <span className="flex items-center gap-1.5 text-xs font-semibold text-muted">
         <span className="text-sm" aria-hidden>
           {player.avatar}
@@ -51,13 +45,22 @@ export function PlayerCell({ player, min, max, shaking }: Props) {
         )}
       </span>
 
-      <span
-        className={`text-5xl font-black tabular-nums tracking-tight sm:text-6xl ${
-          player.solved ? 'text-good' : 'text-ink'
-        }`}
-      >
-        {player.number}
-      </span>
+      {hidden ? (
+        <>
+          <span className="font-display text-7xl leading-none text-accent sm:text-8xl" aria-label="Your number is hidden">
+            ?
+          </span>
+          <span className="text-[10px] font-medium tracking-widest text-muted uppercase">your number</span>
+        </>
+      ) : (
+        <span
+          className={`font-display text-6xl leading-none tabular-nums sm:text-7xl ${
+            player.solved ? 'text-good' : 'text-ink'
+          }`}
+        >
+          {player.number}
+        </span>
+      )}
 
       {player.solved && (
         <span className="absolute top-2.5 right-2.5 grid h-7 w-7 place-items-center rounded-full bg-good text-canvas">

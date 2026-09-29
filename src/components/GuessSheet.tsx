@@ -45,7 +45,7 @@ export function GuessSheet({ min, max, playerName, onCancel, onSubmit }: Props) 
         className="animate-pop-in w-full max-w-sm rounded-3xl border border-edge bg-panel p-6 shadow-2xl shadow-black/60"
       >
         <h2 className="text-xl font-bold">Commit to a number</h2>
-        <p className="mt-1 text-sm text-muted">{playerName}, is this yours? No take-backs.</p>
+        <p className="mt-1 text-sm text-muted">{playerName}, is this yours? A wrong guess ends your turn.</p>
 
         <form
           onSubmit={(event) => {
@@ -61,7 +61,7 @@ export function GuessSheet({ min, max, playerName, onCancel, onSubmit }: Props) 
             inputMode="numeric"
             autoComplete="off"
             aria-label="Your number"
-            className="w-full rounded-2xl border-2 border-edge bg-panel-2 py-5 text-center text-5xl font-black tabular-nums outline-none transition focus:border-accent"
+            className="w-full rounded-2xl border-2 border-edge bg-panel-2 py-5 text-center font-display text-6xl tabular-nums outline-none transition focus:border-accent"
             placeholder="?"
           />
           <p className="mt-2 h-4 text-center text-xs text-muted">
@@ -79,7 +79,7 @@ export function GuessSheet({ min, max, playerName, onCancel, onSubmit }: Props) 
             <button
               type="submit"
               disabled={!valid}
-              className="flex-1 rounded-xl bg-accent px-4 py-3 font-bold text-white transition hover:bg-accent/90 disabled:cursor-not-allowed disabled:opacity-40"
+              className="flex-1 rounded-xl bg-accent px-4 py-3 font-bold text-white transition hover:bg-accent/90 disabled:cursor-not-allowed disabled:bg-panel-2 disabled:text-muted/70"
             >
               Guess it
             </button>

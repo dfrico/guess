@@ -1,5 +1,12 @@
 import type { Metadata, Viewport } from 'next'
+import { Bricolage_Grotesque } from 'next/font/google'
 import './globals.css'
+
+const display = Bricolage_Grotesque({
+  subsets: ['latin'],
+  weight: '800',
+  variable: '--font-bricolage',
+})
 
 export const metadata: Metadata = {
   title: 'Guess My Number',
@@ -15,7 +22,7 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en" className={display.variable}>
       <body className="min-h-full antialiased">{children}</body>
     </html>
   )
