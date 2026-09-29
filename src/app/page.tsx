@@ -16,7 +16,9 @@ export default function JoinPage() {
   const randomAvatar = useStartingAvatar()
 
   const [mode, setMode] = useState<'create' | 'join'>('create')
-  const [name, setName] = useState('')
+  // null until the user types, so the saved name shows by default but an
+  // emptied field stays empty instead of snapping back to it.
+  const [name, setName] = useState<string | null>(null)
   const [avatar, setAvatar] = useState<string>('')
   const [roomName, setRoomName] = useState('')
   const [password, setPassword] = useState('')
@@ -32,7 +34,7 @@ export default function JoinPage() {
     setMode('join')
   }
 
-  const displayName = name || profile?.name || ''
+  const displayName = name ?? profile?.name ?? ''
   const displayAvatar = avatar || profile?.avatar || randomAvatar
 
   async function submit() {
