@@ -9,6 +9,8 @@ export interface Player {
   number: number | null
   solved: boolean
   guesses: number
+  // Private: only ever sent to this player, in RoomView.you.
+  wrongGuesses: number[]
   connected: boolean
   socketId: string | null
   joinedAt: number
@@ -48,7 +50,7 @@ export interface RoomView {
   phase: Phase
   min: number
   max: number
-  you: { id: string; isHost: boolean }
+  you: { id: string; isHost: boolean; wrongGuesses: number[] }
   turnId: string | null
   players: PlayerView[]
   solvedCount: number

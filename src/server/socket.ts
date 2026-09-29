@@ -5,6 +5,7 @@ import {
   endGame,
   findPlayerByToken,
   isGameOver,
+  migrateHostIfAway,
   removePlayer,
   startGame,
   submitGuess,
@@ -31,6 +32,9 @@ type AckResult = { ok: true; [key: string]: unknown } | { ok: false; error: stri
 type Ack = (result: AckResult) => void
 
 const STATE = 'room:state'
+
+// How long a dropped host keeps the role before it passes to someone else.
+const HOST_GRACE_MS = 30_000
 
 function noop(): void {}
 
@@ -118,7 +122,9 @@ export function registerSocketHandlers(io: Server): void {
       if (!player || player.socketId !== socket.id) return
       player.connected = false
       player.socketId = null
+      player.lastSeenAt = Date.now()
       room.lastActivityAt = Date.now()
+      if (room.hostId === player.id) scheduleHostHandoff(room.code)
     }
 
     if (room.players.size === 0) {
@@ -127,6 +133,18 @@ export function registerSocketHandlers(io: Server): void {
     }
     await store.save(room)
     broadcast(io, room)
+  }
+
+  const scheduleHostHandoff = (code: string) => {
+    const timer = setTimeout(() => {
+      void (async () => {
+        const room = await store.get(code)
+        if (!room || !migrateHostIfAway(room, HOST_GRACE_MS)) return
+        await store.save(room)
+        broadcast(io, room)
+      })().catch((error: unknown) => console.error('[socket] host handoff failed:', error))
+    }, HOST_GRACE_MS + 250)
+    timer.unref()
   }
 
   // A socket belongs to one room at a time. Without this, switching rooms
@@ -161,7 +179,11 @@ export function registerSocketHandlers(io: Server): void {
 
       const room = await store.create(code, payload.password.trim())
       const result = addPlayer(room, { name: payload.name, avatar: payload.avatar })
-      if (!result.ok) return ack({ ok: false, error: result.error })
+      if (!result.ok) {
+        // Don't leave an empty room behind for the next joiner to take over.
+        await store.delete(code)
+        return ack({ ok: false, error: result.error })
+      }
       roomsCreated.increment()
 
       await detach(socket)
@@ -178,7 +200,10 @@ export function registerSocketHandlers(io: Server): void {
       const code = normalizeRoomName(payload?.roomName ?? '')
       const room = await store.get(code)
       if (!room) return ack({ ok: false, error: `No room called "${code}".` })
-      if (room.password !== payload?.password) return ack({ ok: false, error: 'Wrong password.' })
+      // Create stores the password trimmed, so compare it the same way.
+      if (typeof payload?.password !== 'string' || room.password !== payload.password.trim()) {
+        return ack({ ok: false, error: 'Wrong password.' })
+      }
 
       const result = addPlayer(room, { name: payload.name, avatar: payload.avatar })
       if (!result.ok) return ack({ ok: false, error: result.error })
@@ -211,6 +236,8 @@ export function registerSocketHandlers(io: Server): void {
       socket.data.roomCode = room.code
       socket.data.playerId = player.id
       await socket.join(`room:${room.code}`)
+      // Covers a host whose grace ran out while nobody was connected to take over.
+      migrateHostIfAway(room, HOST_GRACE_MS)
 
       broadcast(io, room)
       ack({ ok: true, code: room.code, playerId: player.id })
@@ -263,6 +290,7 @@ export function registerSocketHandlers(io: Server): void {
       const ctx = await current(socket)
       if (!ctx) return ack({ ok: false, error: 'You are not in a room.' })
       if (ctx.room.hostId !== ctx.playerId) return ack({ ok: false, error: 'Only the host can do that.' })
+      if (ctx.room.phase !== 'playing') return ack({ ok: false, error: 'The game is not running.' })
 
       endGame(ctx.room)
       trackGameEnd(ctx.room, 'host_ended')

@@ -1,5 +1,5 @@
 import { randomInt, randomUUID } from 'node:crypto'
-import { MAX_NUMBER, MAX_PLAYERS, MIN_NUMBER, type Player, type Room, type RoomView } from './types'
+import { AVATARS, MAX_NUMBER, MAX_PLAYERS, MIN_NUMBER, type Player, type Room, type RoomView } from './types'
 import { normalizeDisplayName, normalizeRoomName } from './room-name'
 
 export function createRoom(code: string, password: string, min = MIN_NUMBER, max = MAX_NUMBER): Room {
@@ -37,10 +37,11 @@ export function addPlayer(
     id: input.id ?? randomUUID(),
     token: randomUUID(),
     name,
-    avatar: input.avatar,
+    avatar: isAvatar(input.avatar) ? input.avatar : AVATARS[0],
     number: room.phase === 'playing' ? randomInt(room.min, room.max + 1) : null,
     solved: false,
     guesses: 0,
+    wrongGuesses: [],
     connected: true,
     socketId: null,
     joinedAt: now,
@@ -53,6 +54,10 @@ export function addPlayer(
   return { ok: true, player }
 }
 
+function isAvatar(value: unknown): value is string {
+  return AVATARS.includes(value as (typeof AVATARS)[number])
+}
+
 export function findPlayerByToken(room: Room, token: unknown): Player | null {
   if (typeof token !== 'string' || !token) return null
   for (const player of room.players.values()) {
@@ -62,21 +67,46 @@ export function findPlayerByToken(room: Room, token: unknown): Player | null {
 }
 
 export function removePlayer(room: Room, playerId: string): void {
+  const seat = room.order.indexOf(playerId)
   room.players.delete(playerId)
   room.order = room.order.filter((id) => id !== playerId)
+  // Removing a seat before the cursor shifts everyone after it left by one.
+  // Follow them, or the current asker loses their turn to the next player.
+  if (seat !== -1 && seat < room.turnIndex) room.turnIndex -= 1
   if (room.turnIndex >= room.order.length) room.turnIndex = 0
-  if (room.hostId === playerId) room.hostId = room.order[0] ?? ''
+  if (room.hostId === playerId) room.hostId = nextHostId(room)
   if (room.players.size === 0) return
   if (room.phase === 'playing' && getTurnId(room) === null) advanceTurn(room)
   room.lastActivityAt = Date.now()
 }
 
+// First connected player in turn order, falling back to the first seat.
+function nextHostId(room: Room): string {
+  const connected = room.order.find((id) => room.players.get(id)?.connected)
+  return connected ?? room.order[0] ?? ''
+}
+
+// A host who drops (rather than leaves) keeps the role for a grace period so a
+// flaky phone doesn't cost them the room. After that, hand it to someone who
+// is actually here, or nobody could deal, redeal or kick.
+export function migrateHostIfAway(room: Room, graceMs: number, now = Date.now()): boolean {
+  const host = room.players.get(room.hostId)
+  if (host?.connected) return false
+  if (host && now - host.lastSeenAt < graceMs) return false
+  const next = room.order.find((id) => id !== room.hostId && room.players.get(id)?.connected)
+  if (!next) return false
+  room.hostId = next
+  room.lastActivityAt = now
+  return true
+}
+
 export function startGame(room: Room): { ok: true } | { ok: false; error: string } {
-  if (room.players.size < 1) return { ok: false, error: 'Nobody is in the room yet.' }
+  if (room.players.size < 2) return { ok: false, error: 'You need at least 2 players.' }
   for (const player of room.players.values()) {
     player.number = randomInt(room.min, room.max + 1)
     player.solved = false
     player.guesses = 0
+    player.wrongGuesses = []
   }
   room.phase = 'playing'
   room.turnIndex = 0
@@ -143,6 +173,7 @@ export function submitGuess(room: Room, playerId: string, value: number): GuessO
     advanceTurn(room)
     return { ok: true, correct: true, correctNumber: player.number }
   }
+  player.wrongGuesses.push(value)
   advanceTurn(room)
   return { ok: true, correct: false, correctNumber: null }
 }
@@ -175,7 +206,12 @@ export function toRoomView(room: Room, viewerId: string): RoomView {
     phase: room.phase,
     min: room.min,
     max: room.max,
-    you: { id: viewerId, isHost: room.hostId === viewerId },
+    // Only the viewer's own wrong guesses, never anyone else's.
+    you: {
+      id: viewerId,
+      isHost: room.hostId === viewerId,
+      wrongGuesses: [...(room.players.get(viewerId)?.wrongGuesses ?? [])],
+    },
     turnId,
     players,
     solvedCount: players.filter((p) => p.solved).length,

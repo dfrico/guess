@@ -47,7 +47,7 @@ Keep that list intact if you touch the dev config.
 | `npm run dev`       | Dev server with hot reload via `tsx watch`                |
 | `npm run build`     | Production Next.js build                                  |
 | `npm start`         | Production server (`NODE_ENV=production tsx server.ts`)   |
-| `npm test`          | 83 end-to-end socket checks — **needs a server running**   |
+| `npm test`          | 95 end-to-end socket checks — **needs a server running**   |
 | `npm run typecheck` | `tsc --noEmit`                                            |
 | `npm run lint`      | ESLint (Next core-web-vitals + TypeScript)                |
 
@@ -93,8 +93,10 @@ Voice and chat are deliberately out of scope.
   and flagged, not removed
 
 **Host controls**
-- Start the game (disabled until at least 2 players are present)
+- Start the game (needs at least 2 players, enforced on the server)
 - Kick a player
+- If the host drops, they keep the role for 30 seconds; after that it passes to the next
+  connected player so the room can't get stuck
 - End the game early and reveal everything
 - Deal again for a rematch
 
@@ -102,6 +104,8 @@ Voice and chat are deliberately out of scope.
 - Emoji avatar picker with a random default and a shuffle button
 - Guest list doubles as the turn-order list, so it's always clear who is asking
 - Host badge, per-player wrong-guess count
+- Your own wrong guesses are listed on your card. They're sent only to you, in
+  `RoomView.you`, never to other players
 - Active player's cell has a pulsing ring in *everyone's* view, so responders know whose
   number the current question is about
 - Full mobile layout, no horizontal scroll at 390px
@@ -188,7 +192,8 @@ It scans exactly `size` steps, so a lone remaining player finds themselves and k
 turn. If nobody is unsolved, the phase flips to `finished`.
 
 This is a plain array cursor rather than a linked queue so it survives players leaving —
-`removePlayer` filters `order` and re-clamps the index.
+`removePlayer` filters `order` and moves the cursor back when the removed seat was before it,
+so the current asker keeps their turn.
 
 ### Storage seam
 
@@ -290,12 +295,15 @@ socket.io does not strip `undefined` arguments, so a handler declaring a lone op
 ## Testing
 
 `npm test` runs `scripts/smoke.ts`, which drives a real server with four socket.io clients
-and asserts 83 conditions. It covers room lifecycle, all the validation rejections,
+and asserts 95 conditions. It covers room lifecycle, all the validation rejections,
 number and token secrecy across every emitted frame, turn order, wrong guesses passing the
 turn, correct guesses, restart, joining mid-game, token-based reconnect, stale disconnects,
 switching rooms, departure, and the ack-signature behaviour described above.
 
 It needs a server running — start one with `npm run dev`, or `npm run build && npm start`.
+
+The host handoff isn't covered, because it takes 30 seconds. `migrateHostIfAway` in
+`src/lib/game.ts` is a pure function, so it's the obvious first unit test.
 
 One thing worth knowing if you extend it: the test can never learn a player's number from
 that player's own payload, because that is the point of the app. It reads the target's number

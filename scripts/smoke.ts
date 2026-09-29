@@ -110,6 +110,28 @@ async function main() {
   check('non-host cannot start', (await ask(sockets[1], 'room:start')).ok === false)
   check('guessing before start rejected', (await ask(sockets[0], 'room:guess', { value: 42 })).ok === false)
 
+  {
+    const solo = await connect()
+    const soloCap = capture(solo)
+    const soloRoom = `${ROOM}-solo`
+    const failed = await ask(solo, 'room:create', { roomName: `${ROOM}-bad`, password: PASSWORD, name: '   ', avatar: '🐶' })
+    check('create with a blank name rejected', failed.ok === false)
+    const orphan = await ask(solo, 'room:join', { roomName: `${ROOM}-bad`, password: PASSWORD, name: 'x', avatar: '🐶' })
+    check('a failed create leaves no room behind', orphan.ok === false, JSON.stringify(orphan))
+
+    await ask(solo, 'room:create', { roomName: soloRoom, password: ' spaced ', name: 'solo', avatar: 'x'.repeat(5000) })
+    await sleep(150)
+    check('an unknown avatar is replaced with a real one', soloCap.last()?.players[0]?.avatar === '🐶', soloCap.last()?.players[0]?.avatar?.length)
+    check('cannot start with 1 player', (await ask(solo, 'room:start')).ok === false)
+    check('cannot end a game that has not started', (await ask(solo, 'room:end')).ok === false)
+    const guest = await connect()
+    const trimmed = await ask(guest, 'room:join', { roomName: soloRoom, password: ' spaced ', name: 'guest', avatar: '🐱' })
+    check('join accepts the password exactly as the creator typed it', trimmed.ok === true, JSON.stringify(trimmed))
+    soloCap.stop()
+    solo.close()
+    guest.close()
+  }
+
   console.log('\nstarting the game')
   check('host starts', (await ask(sockets[0], 'room:start')).ok === true)
   await sleep(300)
@@ -203,6 +225,16 @@ async function main() {
       )
       const again = await ask(target, 'room:guess', { value: answer })
       check('cannot guess again after a wrong guess', again.ok === false, JSON.stringify(again))
+      const ownView = caps[activeIndex].last()
+      check(
+        'your wrong guesses are sent to you',
+        JSON.stringify(ownView.you.wrongGuesses) === JSON.stringify([wrongValue]),
+        JSON.stringify(ownView.you.wrongGuesses),
+      )
+      check(
+        "nobody else is sent your wrong guesses",
+        caps.every((cap, i) => i === activeIndex || cap.last().you.wrongGuesses.length === 0),
+      )
       continue
     }
 
@@ -231,6 +263,7 @@ async function main() {
   check('back to playing', restarted.phase === 'playing', restarted.phase)
   check('numbers re-hidden', restarted.players.every((p: any) => !p.solved))
   check('guesses reset', restarted.players.every((p: any) => p.guesses === 0))
+  check('wrong guesses reset', caps.every((cap) => cap.last().you.wrongGuesses.length === 0))
 
   console.log('\njoining mid-game')
   const late = await connect()
@@ -298,6 +331,31 @@ async function main() {
   check('players still in the room are connected', stillHere.every((p: any) => p.connected === true))
   const host = observer.players.find((p: any) => p.isHost)
   check('a disconnected player is flagged, not removed', host?.name === 'ada' && host?.connected === false)
+
+  console.log('\nturn order when someone leaves')
+  {
+    const trio = [await connect(), await connect(), await connect()]
+    const trioCaps = trio.map((socket) => capture(socket))
+    const trioRoom = `${ROOM}-trio`
+    await ask(trio[0], 'room:create', { roomName: trioRoom, password: PASSWORD, name: 't0', avatar: '🐶' })
+    await ask(trio[1], 'room:join', { roomName: trioRoom, password: PASSWORD, name: 't1', avatar: '🐶' })
+    await ask(trio[2], 'room:join', { roomName: trioRoom, password: PASSWORD, name: 't2', avatar: '🐶' })
+    await ask(trio[0], 'room:start')
+    await ask(trio[0], 'room:pass')
+    await sleep(150)
+    check('turn moved to the second seat', trioCaps[2].last().players.find((p: any) => p.isTurn)?.name === 't1')
+    await ask(trio[0], 'room:leave')
+    await sleep(200)
+    const after = trioCaps[2].last()
+    check(
+      'the asker keeps the turn when an earlier seat leaves',
+      after.players.find((p: any) => p.isTurn)?.name === 't1',
+      after.players.find((p: any) => p.isTurn)?.name,
+    )
+    check('a departing host hands the role to the next player', after.players.find((p: any) => p.isHost)?.name === 't1')
+    trioCaps.forEach((cap) => cap.stop())
+    trio.forEach((socket) => socket.close())
+  }
 
   console.log('\nswitching rooms')
   const moved = await ask(sockets[3], 'room:create', {

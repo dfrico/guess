@@ -199,7 +199,13 @@ export function RoomScreen({ code }: { code: string }) {
             <>
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 sm:gap-5">
                 {view.players.map((player, seat) => (
-                  <PlayerCell key={player.id} player={player} seat={seat} shaking={shaking === player.id} />
+                  <PlayerCell
+                    key={player.id}
+                    player={player}
+                    seat={seat}
+                    shaking={shaking === player.id}
+                    wrongGuesses={player.isYou ? view.you.wrongGuesses : undefined}
+                  />
                 ))}
               </div>
               <div className="mt-5">
