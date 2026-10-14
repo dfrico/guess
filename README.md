@@ -47,7 +47,7 @@ Keep that list intact if you touch the dev config.
 | `npm run dev`       | Dev server with hot reload via `tsx watch`                |
 | `npm run build`     | Production Next.js build                                  |
 | `npm start`         | Production server (`NODE_ENV=production tsx server.ts`)   |
-| `npm test`          | 95 end-to-end socket checks — **needs a server running**   |
+| `npm test`          | 96 end-to-end socket checks — **needs a server running**   |
 | `npm run typecheck` | `tsc --noEmit`                                            |
 | `npm run lint`      | ESLint (Next core-web-vitals + TypeScript)                |
 
@@ -55,7 +55,8 @@ Keep that list intact if you touch the dev config.
 
 1. Someone creates a room with a name and a password, and becomes the host.
 2. Everyone else joins with the same name and password and picks a name and an emoji.
-3. The host deals the numbers. Each player gets a random integer from 1–100.
+3. The host deals the numbers. Each player gets a different number from 1–100.
+   Small numbers are funnier, so they come up far more often (see *Dealing numbers*).
 4. Take turns. On your turn, ask the group questions — "is it above 50?", "is it a prime?",
    "would I be okay with that many dollars?" Everyone else can see your cell and answers.
 5. When you're confident, hit **I think I know it** and type the number. The server is the
@@ -72,7 +73,7 @@ Voice and chat are deliberately out of scope.
 - Turn order with an active-turn highlight, visible to the whole room
 - Server-refereed guesses — you cannot fake a solve to skip your turn
 - 1–100 range, shown to everyone so the asker knows the search space
-- Duplicate numbers are allowed, matching the physical game
+- No two players share a number, and small numbers are dealt more often
 - Players who join mid-game are dealt a number and go to the end of the turn order
 
 **Solved state**
@@ -182,6 +183,17 @@ Authorisation is resolved from `socket.data` (set at join/resume), never from th
 A client can't ask to be treated as a different player. Guess restrictions live in
 `submitGuess`: it must be your turn, the game must be running, you must not already be
 solved, and the value must be a whole number in range.
+
+### Dealing numbers
+
+`dealNumber` in `src/lib/game.ts` does a weighted draw without repeats. Each number's
+weight is `e^(-0.05·(n − min))`, so on 1–100 the median deal is about 14. Roughly 63% of
+numbers are 20 or below, and only about 8% are above 50. `FUNNY_NUMBERS` gives a few numbers
+a bump by weighting them as if they were a smaller number: 69 is dealt about as often as 40,
+and roughly four times as often as 68. A player who joins mid-game draws from the numbers
+nobody holds yet.
+
+Since nobody shares a number, you can rule out every number you can see. That's deliberate.
 
 ### Turn order
 
@@ -297,7 +309,7 @@ socket.io does not strip `undefined` arguments, so a handler declaring a lone op
 ## Testing
 
 `npm test` runs `scripts/smoke.ts`, which drives a real server with four socket.io clients
-and asserts 95 conditions. It covers room lifecycle, all the validation rejections,
+and asserts 96 conditions. It covers room lifecycle, all the validation rejections,
 number and token secrecy across every emitted frame, turn order, wrong guesses passing the
 turn, correct guesses, restart, joining mid-game, token-based reconnect, stale disconnects,
 switching rooms, departure, and the ack-signature behaviour described above.

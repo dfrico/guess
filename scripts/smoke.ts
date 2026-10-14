@@ -167,7 +167,7 @@ async function main() {
   console.log(`  (dealt numbers: ${[...truth.entries()].map(([k, v]) => `${k}=${v}`).join(', ')})`)
   check('numbers are in range 1-100', [...truth.values()].every((n) => n >= 1 && n <= 100))
   check('all four numbers dealt', truth.size === 4)
-  console.log(`  (${distinct.size} distinct values — duplicates are allowed, like the real game)`)
+  check('no two players share a number', distinct.size === truth.size)
 
   console.log('\nturns and guessing')
   let view = caps[0].last()

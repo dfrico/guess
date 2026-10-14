@@ -38,7 +38,7 @@ export function addPlayer(
     token: randomUUID(),
     name,
     avatar: isAvatar(input.avatar) ? input.avatar : AVATARS[0],
-    number: room.phase === 'playing' ? randomInt(room.min, room.max + 1) : null,
+    number: room.phase === 'playing' ? dealNumber(room, heldNumbers(room)) : null,
     solved: false,
     guesses: 0,
     wrongGuesses: [],
@@ -110,10 +110,45 @@ export function migrateHostIfAway(room: Room, graceMs: number, now = Date.now())
   return true
 }
 
+// Small numbers are funnier, so they're dealt more often: each number's weight decays
+// exponentially with its distance from room.min (a median of ~14 on 1–100).
+const DECAY = 0.05
+// A few numbers get a bump: they're weighted as if they were the number they map to.
+const FUNNY_NUMBERS: Record<number, number> = { 42: 30, 67: 40, 69: 40 }
+
+export function numberWeight(n: number, min: number): number {
+  return Math.exp(-DECAY * ((FUNNY_NUMBERS[n] ?? n) - min))
+}
+
+function heldNumbers(room: Room): Set<number> {
+  const held = new Set<number>()
+  for (const p of room.players.values()) if (p.number !== null) held.add(p.number)
+  return held
+}
+
+// Weighted draw without repeats. MAX_PLAYERS is far below the range, so it never runs dry.
+export function dealNumber(room: Room, taken: Set<number>): number {
+  const candidates: number[] = []
+  let total = 0
+  for (let n = room.min; n <= room.max; n++) {
+    if (taken.has(n)) continue
+    candidates.push(n)
+    total += numberWeight(n, room.min)
+  }
+  let r = (randomInt(2 ** 47) / 2 ** 47) * total
+  for (const n of candidates) {
+    r -= numberWeight(n, room.min)
+    if (r < 0) return n
+  }
+  return candidates[candidates.length - 1]
+}
+
 export function startGame(room: Room): { ok: true } | { ok: false; error: string } {
   if (room.players.size < 2) return { ok: false, error: 'You need at least 2 players.' }
+  const taken = new Set<number>()
   for (const player of room.players.values()) {
-    player.number = randomInt(room.min, room.max + 1)
+    player.number = dealNumber(room, taken)
+    taken.add(player.number)
     player.solved = false
     player.guesses = 0
     player.wrongGuesses = []
